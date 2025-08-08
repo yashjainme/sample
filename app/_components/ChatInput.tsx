@@ -33,7 +33,7 @@ export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
   };
-  
+
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
@@ -62,24 +62,29 @@ export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) 
             <div className="d-flex gap-2 mb-2 overflow-auto pb-1">
               {!input && !isLoading && (
                 <>
-                  {/* These buttons are fine, we'll keep their existing style */}
                   <button
                     className="btn btn-sm rounded-pill flex-shrink-0 border bg-light text-secondary"
-                    onClick={() => setInput("What's the weather like today?")}
+                    onClick={() => setInput("Create a futuristic cityscape at sunset")}
                   >
-                    Weather
+                    🎨 Generate Image
                   </button>
                   <button
                     className="btn btn-sm rounded-pill flex-shrink-0 border bg-light text-secondary"
-                    onClick={() => setInput("Tell me a joke")}
+                    onClick={() => setInput("Explain quantum computing in simple terms")}
                   >
-                    Joke
+                    🧠 Explain Topics
                   </button>
                   <button
                     className="btn btn-sm rounded-pill flex-shrink-0 border bg-light text-secondary"
-                    onClick={() => setInput("Help me write an email")}
+                    onClick={() => setInput("Help me write a professional email")}
                   >
-                    Email Help
+                    📧 Email Help
+                  </button>
+                  <button
+                    className="btn btn-sm rounded-pill flex-shrink-0 border bg-light text-secondary"
+                    onClick={() => setInput("Tell me a funny joke")}
+                  >
+                    😄 Tell a Joke
                   </button>
                 </>
               )}

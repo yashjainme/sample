@@ -1,4 +1,3 @@
-
 // lib/gemini.ts
 
 import { GoogleGenerativeAI, type Content } from '@google/generative-ai';
@@ -147,6 +146,40 @@ function extractImagePrompt(originalPrompt: string): string {
   return extractedPrompt;
 }
 
+// Helper function to detect simple greetings and casual messages
+function isSimpleMessage(prompt: string): boolean {
+  const trimmedPrompt = prompt.trim().toLowerCase();
+  
+  // Simple greetings
+  const simpleGreetings = [
+    'hi', 'hello', 'hey', 'howdy', 'greetings',
+    'good morning', 'good afternoon', 'good evening',
+    'what\'s up', 'whats up', 'sup'
+  ];
+  
+  // Check if it's just a greeting
+  if (simpleGreetings.some(greeting => trimmedPrompt === greeting)) {
+    return true;
+  }
+  
+  // Check if it's a very short message (likely casual)
+  if (trimmedPrompt.length <= 15 && !trimmedPrompt.includes('?')) {
+    return true;
+  }
+  
+  // Simple responses or acknowledgments
+  const simpleResponses = [
+    'ok', 'okay', 'yes', 'no', 'thanks', 'thank you',
+    'cool', 'nice', 'great', 'awesome', 'sure'
+  ];
+  
+  if (simpleResponses.includes(trimmedPrompt)) {
+    return true;
+  }
+  
+  return false;
+}
+
 interface ApiResponse {
   type: 'text' | 'image';
   content: string;
@@ -246,20 +279,25 @@ export async function getApiResponse(
       };
     }
   } else {
-    // Enhanced text response with better context awareness
+    // Text response with smart prompt handling
     try {
       console.log('💬 Proceeding with text-based response using Gemini');
       
-      // Create an enhanced prompt that provides better context to Gemini
-      const enhancedPrompt = history.length === 0 
-        ? `Please provide a comprehensive and helpful response to: ${prompt}`
-        : prompt;
+      // Check if it's a simple message that doesn't need enhancement
+      const shouldUseOriginalPrompt = isSimpleMessage(prompt) || history.length > 0;
+      
+      // Only enhance the prompt for first-time complex questions
+      const finalPrompt = shouldUseOriginalPrompt 
+        ? prompt 
+        : `Please provide a comprehensive and helpful response to: ${prompt}`;
       
       const chat = textModel.startChat({ history });
-      const result = await chat.sendMessage(enhancedPrompt);
+      const result = await chat.sendMessage(finalPrompt);
       const text = result.response.text();
       
       console.log('✅ Generated text response successfully');
+      console.log('🔧 Used original prompt:', shouldUseOriginalPrompt);
+      
       return { type: 'text', content: text };
     } catch (error) {
       console.error('Error with Gemini Text Model (Chat):', error);
