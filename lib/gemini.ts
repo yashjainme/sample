@@ -11,7 +11,7 @@ const textModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 // Enhanced regex patterns for comprehensive image request detection
 const IMAGE_ACTION_WORDS = /(generate|create|draw|make|produce|design|build|craft|render|paint|sketch|illustrate|visualize|show me|give me)/i;
-const IMAGE_NOUNS = /(image|picture|photo|illustration|drawing|artwork|graphic|visual|design|painting|sketch|diagram|chart|infographic|poster|banner|logo|icon|wallpaper|background)/i;
+const IMAGE_NOUNS = /(image|picture|photo|illustration|drawing|artwork|graphic|visual|design|painting|sketch|diagram|chart|infographic|poster|banner|logo|icon|wallpaper|background|cityscape|landscape|portrait|scene)/i;
 const IMAGE_DESCRIPTORS = /(of|with|showing|depicting|featuring|containing|representing|about)/i;
 
 // Multi-pattern image detection with context awareness
@@ -29,14 +29,18 @@ const IMAGE_REQUEST_PATTERNS = [
   /(?:design|paint|sketch|draw|illustrate|render)(?:\s+(?:me|us))?\s+(?:a|an|some)/i,
   
   // Show me requests: "show me what X looks like"
-  /show\s+me\s+(?:what|how|a|an).*?(?:looks?\s+like|appears?|seems?)/i
+  /show\s+me\s+(?:what|how|a|an).*?(?:looks?\s+like|appears?|seems?)/i,
+  
+  // Direct creation requests: "create a cityscape", "make a sunset"
+  /(?:create|make|generate|draw|paint|design|render|build)\s+(?:a|an|some)?\s*(?:futuristic|beautiful|stunning|amazing|epic)?\s*(?:cityscape|landscape|sunset|sunrise|scene|art|artwork|picture|image)/i
 ];
 
 // Context keywords that suggest visual content
 const VISUAL_CONTEXT_KEYWORDS = [
   'color', 'style', 'appearance', 'visual', 'artistic', 'aesthetic',
   'portrait', 'landscape', 'scene', 'character', 'object', 'abstract',
-  'realistic', 'cartoon', 'anime', '3d', '2d', 'digital art'
+  'realistic', 'cartoon', 'anime', '3d', '2d', 'digital art',
+  'cityscape', 'sunset', 'sunrise', 'futuristic', 'neon', 'cyberpunk'
 ];
 
 // Enhanced image detection function with chain of thought
@@ -56,7 +60,7 @@ function detectImageRequest(prompt: string): {
   for (let i = 0; i < IMAGE_REQUEST_PATTERNS.length; i++) {
     const pattern = IMAGE_REQUEST_PATTERNS[i];
     if (pattern.test(prompt)) {
-      confidence += 30;
+      confidence += 35; // Increased from 30
       matchedPatterns.push(`Pattern ${i + 1}`);
       reasoning.push(`✅ Matched direct image request pattern ${i + 1}`);
     }
@@ -67,13 +71,13 @@ function detectImageRequest(prompt: string): {
   const hasImageNoun = IMAGE_NOUNS.test(prompt);
   
   if (hasActionWord && hasImageNoun) {
-    confidence += 25;
+    confidence += 30; // Increased from 25
     reasoning.push('✅ Contains both action word and image noun');
   } else if (hasActionWord) {
-    confidence += 10;
+    confidence += 15; // Increased from 10
     reasoning.push('⚠️ Contains action word but no clear image noun');
   } else if (hasImageNoun) {
-    confidence += 15;
+    confidence += 20; // Increased from 15
     reasoning.push('⚠️ Contains image noun but no clear action word');
   }
   
@@ -83,7 +87,7 @@ function detectImageRequest(prompt: string): {
   );
   
   if (visualKeywords.length > 0) {
-    confidence += visualKeywords.length * 5;
+    confidence += visualKeywords.length * 8; // Increased from 5
     reasoning.push(`✅ Found visual context keywords: ${visualKeywords.join(', ')}`);
   }
   
@@ -96,13 +100,13 @@ function detectImageRequest(prompt: string): {
   
   for (const indicator of textOnlyIndicators) {
     if (indicator.test(prompt) && confidence < 40) {
-      confidence -= 15;
+      confidence -= 10; // Reduced penalty from 15
       reasoning.push('⚠️ Contains text-only request indicators');
     }
   }
   
-  // Step 5: Final decision logic
-  const isImageRequest = confidence >= 25;
+  // Step 5: Final decision logic - lowered threshold
+  const isImageRequest = confidence >= 20; // Lowered from 25
   const finalReasoning = [
     `📊 Confidence score: ${confidence}/100`,
     `🎯 Decision: ${isImageRequest ? 'IMAGE GENERATION' : 'TEXT RESPONSE'}`,
@@ -254,42 +258,53 @@ export async function getApiResponse(
       const imgResp = await fetch(imageUrl);
       const arrayBuffer = await imgResp.arrayBuffer();
       const imageBuffer = Buffer.from(arrayBuffer);
-      const fileName = `img_${Date.now()}.png`;
+      
+      // Generate a more secure filename with random string
+      const randomId = Math.random().toString(36).substring(2, 15);
+      const fileName = `generated_${randomId}_${Date.now()}.png`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from('generated-images')
-        .upload(fileName, imageBuffer, { contentType: 'image/png' });
+        .upload(fileName, imageBuffer, { 
+          contentType: 'image/png',
+          upsert: false // Prevent overwriting
+        });
 
       if (uploadError) {
         console.error('Supabase upload error:', uploadError);
-        throw new Error(`Supabase upload error: ${uploadError.message}`);
+        throw new Error(`Failed to save generated image. Please try again.`);
       }
 
       const { data: { publicUrl } } = supabaseAdmin.storage
         .from('generated-images')
         .getPublicUrl(fileName);
 
+      // Return just the image without exposing internal details
+      console.log('✅ Image generated and uploaded successfully');
       return { type: 'image', content: publicUrl };
 
     } catch (error) {
-      console.error('Error during image generation with SubNP:', error);
+      console.error('Error during image generation:', error);
       return {
         type: 'text',
-        content: "Sorry, I couldn't generate the image right now. Please try again.'"
+        content: "I couldn't generate the image right now. Please try again or rephrase your request."
       };
     }
   } else {
-    // Text response with smart prompt handling
+    // Enhanced text response - prevent Gemini from generating image URLs
     try {
       console.log('💬 Proceeding with text-based response using Gemini');
       
       // Check if it's a simple message that doesn't need enhancement
       const shouldUseOriginalPrompt = isSimpleMessage(prompt) || history.length > 0;
       
+      // Add instruction to prevent Gemini from generating URLs or suggesting image generation
+      const systemInstruction = "You are a helpful text-based AI assistant. Do not generate URLs, links, or suggest image generation services. Provide only text-based responses.";
+      
       // Only enhance the prompt for first-time complex questions
       const finalPrompt = shouldUseOriginalPrompt 
-        ? prompt 
-        : `Please provide a comprehensive and helpful response to: ${prompt}`;
+        ? `${systemInstruction} User: ${prompt}` 
+        : `${systemInstruction} Please provide a comprehensive and helpful text response to: ${prompt}`;
       
       const chat = textModel.startChat({ history });
       const result = await chat.sendMessage(finalPrompt);
